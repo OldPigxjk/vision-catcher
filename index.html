@@ -119,7 +119,10 @@
   <div class="step">② 选择武器</div>
   <div class="row" id="weaponRow"></div>
 
-  <div class="step">③ 选择难度</div>
+  <div class="step">③ 选择场景</div>
+  <div class="row" id="cityRow"></div>
+
+  <div class="step">④ 选择难度</div>
   <div class="row" id="diffRow"></div>
 
   <button class="btn" id="startBtn">开始训练</button>
@@ -208,7 +211,7 @@ let fireCd=0, recoil=0, muzzle=0;
 
 const pointer = { x: 0, y: 0 };
 let targets = [];
-let parts = [], texts = [], tracers = [];
+let parts = [], texts = [], tracers = [], shells = [];
 
 // ==================== 工具 ====================
 const rand=(a,b)=>a+Math.random()*(b-a);
@@ -435,81 +438,144 @@ function hitTestTarget(t, px, py){
 
 function drawTarget(t){
   const alive = clamp(t.ttl/t.maxTtl, 0, 1);
-  const pop = Math.min(1, (elapsed-t.born)/0.14);
-  const sc = (0.82 + 0.18*pop) * 1.32;
+  const pop = Math.min(1, (elapsed-t.born)/0.16);
+  const sc = (0.80 + 0.20*pop) * 1.34;
+  const h = t.hue;
+  const armor  = "hsl("+h+",40%,62%)";
+  const armorD = "hsl("+h+",38%,34%)";
+  const armorL = "hsl("+h+",48%,78%)";
+  const glow   = "hsl("+h+",100%,66%)";
 
   ctx.save();
-  ctx.translate(t.x, t.y + Math.sin(t.bob)*2);
+  ctx.translate(t.x, t.y + Math.sin(t.bob)*1.6);
   ctx.scale(sc, sc);
+  ctx.lineJoin = "round";
 
-  const base = "hsl("+t.hue+",72%,58%)";
-  const dark = "hsl("+t.hue+",66%,34%)";
-  const light= "hsl("+t.hue+",86%,72%)";
+  // 地面阴影
+  ctx.fillStyle = "rgba(0,0,0,.40)";
+  ctx.beginPath(); ctx.ellipse(0, 60, 24, 6, 0, 0, Math.PI*2); ctx.fill();
 
-  // 影子
-  ctx.fillStyle = "rgba(0,0,0,.34)";
-  ctx.beginPath(); ctx.ellipse(0, 46, 26, 7, 0, 0, Math.PI*2); ctx.fill();
+  // ---- 腿：大腿 / 小腿 / 脚 ----
+  ctx.fillStyle = armorD;
+  roundRect(-13, 22, 10, 21, 4); ctx.fill();
+  roundRect(3, 22, 10, 21, 4); ctx.fill();
+  ctx.fillStyle = armor;
+  roundRect(-12.5, 41, 9, 17, 3.5); ctx.fill();
+  roundRect(3.5, 41, 9, 17, 3.5); ctx.fill();
+  ctx.fillStyle = armorD;
+  roundRect(-14, 55, 12, 6, 2.5); ctx.fill();
+  roundRect(2, 55, 12, 6, 2.5); ctx.fill();
+  // 膝部指示灯
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(-8, 43, 1.9, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(8, 43, 1.9, 0, Math.PI*2); ctx.fill();
 
-  // 腿
-  ctx.fillStyle = dark; ctx.strokeStyle = "rgba(0,0,0,.4)"; ctx.lineWidth=1.4;
-  roundRect(-13, 30, 10, 24, 4); ctx.fill(); ctx.stroke();
-  roundRect(3, 30, 10, 24, 4); ctx.fill(); ctx.stroke();
+  // ---- 腰 ----
+  ctx.fillStyle = armorD;
+  roundRect(-13, 8, 26, 12, 4); ctx.fill();
 
-  // 身体
-  const bg = ctx.createLinearGradient(-BODY.w/2, -BODY.offY, BODY.w/2, BODY.offY+BODY.h);
-  bg.addColorStop(0, base); bg.addColorStop(1, dark);
-  ctx.fillStyle = bg;
-  roundRect(-BODY.w/2, -BODY.offY, BODY.w, BODY.h, 9); ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,.22)"; ctx.lineWidth=1.5; ctx.stroke();
+  // ---- 胸甲 ----
+  const cg = ctx.createLinearGradient(-20,-30,20,10);
+  cg.addColorStop(0, armorL);
+  cg.addColorStop(0.5, armor);
+  cg.addColorStop(1, armorD);
+  ctx.fillStyle = cg;
+  ctx.beginPath();
+  ctx.moveTo(-19,-26);
+  ctx.quadraticCurveTo(0,-34,19,-26);
+  ctx.lineTo(16,8);
+  ctx.quadraticCurveTo(0,13,-16,8);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "rgba(10,16,24,.55)"; ctx.lineWidth = 1.6; ctx.stroke();
 
-  // 手臂
-  ctx.fillStyle = dark;
-  roundRect(-BODY.w/2-8, -BODY.offY+4, 8, 30, 4); ctx.fill();
-  roundRect(BODY.w/2, -BODY.offY+4, 8, 30, 4); ctx.fill();
+  // 胸口能量核心
+  ctx.shadowColor = glow; ctx.shadowBlur = 11;
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(0,-12,3.5,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur = 0;
+  // 胸甲分模线
+  ctx.strokeStyle = "rgba(12,20,28,.32)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(-13,-22); ctx.lineTo(13,-22); ctx.stroke();
 
-  // 头
-  const headY = HEAD_OFF;
-  const hg = ctx.createRadialGradient(-4, headY-4, 1, 0, headY, HEADR);
-  hg.addColorStop(0, light); hg.addColorStop(1, base);
+  // ---- 肩甲 ----
+  ctx.fillStyle = armorL;
+  ctx.beginPath(); ctx.arc(-19,-24,6.4,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(19,-24,6.4,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = "rgba(10,16,24,.45)"; ctx.lineWidth = 1.2; ctx.stroke();
+
+  // ---- 手臂：上臂 / 前臂 / 手 ----
+  ctx.fillStyle = armorD;
+  roundRect(-25,-22,9,20,4); ctx.fill();
+  roundRect(16,-22,9,20,4); ctx.fill();
+  ctx.fillStyle = armor;
+  roundRect(-25,0,8.5,17,3.5); ctx.fill();
+  roundRect(16.5,0,8.5,17,3.5); ctx.fill();
+  ctx.fillStyle = armorL;
+  ctx.beginPath(); ctx.arc(-20.7,20,4.1,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(20.7,20,4.1,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = "rgba(10,16,24,.4)"; ctx.lineWidth = 1; ctx.stroke();
+
+  // ---- 颈 ----
+  ctx.fillStyle = armorD;
+  roundRect(-5,-38,10,8,3); ctx.fill();
+
+  // ---- 头部：头盔 + 发光眼带 ----
+  const headY = -52;
+  const hg = ctx.createLinearGradient(-14,headY-15,14,headY+15);
+  hg.addColorStop(0, armorL);
+  hg.addColorStop(0.55, armor);
+  hg.addColorStop(1, armorD);
   ctx.fillStyle = hg;
-  ctx.beginPath(); ctx.arc(0, headY, HEADR, 0, Math.PI*2); ctx.fill();
-  ctx.strokeStyle="rgba(255,255,255,.3)"; ctx.lineWidth=1.5; ctx.stroke();
+  roundRect(-13.5, headY-14, 27, 28, 9); ctx.fill();
+  ctx.strokeStyle = "rgba(10,16,24,.55)"; ctx.lineWidth = 1.6; ctx.stroke();
 
-  // 眼睛（瞄准点）
-  ctx.fillStyle = "#101820";
-  ctx.beginPath(); ctx.arc(-5.2, headY-2, 2.5, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(5.2, headY-2, 2.5, 0, Math.PI*2); ctx.fill();
-  // 十字标记（提示爆头位）
-  ctx.strokeStyle = hexA("#ffffff", 0.55); ctx.lineWidth = 1.2;
-  ctx.beginPath(); ctx.moveTo(0, headY-HEADR-3); ctx.lineTo(0, headY-HEADR+2); ctx.stroke();
+  // 护耳
+  ctx.fillStyle = armorD;
+  roundRect(-17.5, headY-5, 4.6, 11, 2); ctx.fill();
+  roundRect(12.9, headY-5, 4.6, 11, 2); ctx.fill();
 
-  // 命中闪白
+  // 眼带（Valorant 机器人特征）
+  ctx.shadowColor = glow; ctx.shadowBlur = 10;
+  ctx.fillStyle = glow;
+  roundRect(-9.5, headY-2, 19, 4.2, 2.1); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // 头顶天线
+  ctx.strokeStyle = "rgba(12,20,28,.6)"; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(0, headY-14); ctx.lineTo(0, headY-21); ctx.stroke();
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(0, headY-22.6, 1.8, 0, Math.PI*2); ctx.fill();
+
+  // ---- 命中闪白 ----
   if(t.flash > 0){
-    ctx.globalAlpha = Math.min(0.85, t.flash*3);
-    ctx.fillStyle = "#fff";
-    roundRect(-BODY.w/2, -BODY.offY, BODY.w, BODY.h+18, 9); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, headY, HEADR+1, 0, Math.PI*2); ctx.fill();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = Math.min(0.7, t.flash*2.1);
+    ctx.fillStyle = "#ffffff";
+    roundRect(-20,-30, 40, 42, 11); ctx.fill();
+    roundRect(-13.5, headY-14, 27, 28, 9); ctx.fill();
     ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
   }
+
   ctx.restore();
 
   // 血条
   if(t.hp < t.maxHp){
-    const bw = 46, bx = t.x-bw/2, by = t.y + HEAD_OFF - HEADR - 12;
-    ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fillRect(bx, by, bw, 3.6);
-    const p = t.hp/t.maxHp;
-    ctx.fillStyle = p>0.6?"#7ee0c0":p>0.3?"#ffcf6b":"#ff7a6b";
-    ctx.fillRect(bx, by, bw*p, 3.6);
+    const bw = 48, bx = t.x-bw/2, by = t.y-74;
+    ctx.fillStyle = "rgba(0,0,0,.6)";
+    roundRect(bx-1.2, by-1.2, bw+2.4, 5.8, 2.9); ctx.fill();
+    const pr = t.hp/t.maxHp;
+    ctx.fillStyle = pr>0.6 ? "#7ee0c0" : pr>0.3 ? "#ffcf6b" : "#ff7a6b";
+    roundRect(bx, by, bw*pr, 3.4, 1.7); ctx.fill();
   }
 
   // 存活倒计时环
-  ctx.strokeStyle = "rgba(255,255,255,"+(0.14+0.3*alive)+")";
+  ctx.strokeStyle = "rgba(255,255,255,"+(0.10+0.26*alive).toFixed(3)+")";
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(t.x, t.y+HEAD_OFF, HEADR+7, -Math.PI/2, -Math.PI/2 + Math.PI*2*alive);
+  ctx.arc(t.x, t.y-52, 24, -Math.PI/2, -Math.PI/2 + Math.PI*2*alive);
   ctx.stroke();
 }
-
 function roundRect(x,y,w,h,r){
   ctx.beginPath();
   ctx.moveTo(x+r,y);
@@ -557,7 +623,11 @@ function fire(){
   recoil = Math.min(3.2, recoil + weapon.kick*0.55);
 
   // 弹道
-  tracers.push({ x1: W*0.5, y1: H+20, x2: px, y2: py, life:.07, max:.07 });
+  // 曳光弹：从枪口飞向弹着点
+  tracers.push({ x1: W*0.5, y1: H-216, x2: px, y2: py, life:0.15, max:0.15 });
+  // 弹壳抛射
+  shells.push({ x: W*0.5+17, y: H-150, vx: rand(110,215), vy: rand(-285,-195),
+                rot: rand(0,6.28), vr: rand(-16,16), life:1.2, max:1.2 });
 
   // 命中判定（取最近的可命中靶）
   let best=null, bestZone=null, bestD=1e9;
@@ -612,53 +682,279 @@ function startReload(){
 }
 
 // ==================== 靶场背景 ====================
-function drawRange(){
-  // 天空/墙
-  const g = ctx.createLinearGradient(0,0,0,H*0.72);
-  g.addColorStop(0,"#0b1622");
-  g.addColorStop(0.55,"#0d1a28");
-  g.addColorStop(1,"#101d2c");
-  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+// ==================== 场景（城市背景） ====================
+const CITIES = {
+  la:    { key:"la",    name:"洛杉矶", desc:"棕榈 · 落日" },
+  paris: { key:"paris", name:"巴黎",   desc:"铁塔 · 黄昏" },
+  tokyo: { key:"tokyo", name:"东京",   desc:"霓虹 · 夜" }
+};
+let city = CITIES.la;
 
+function drawBackground(){
   const hz = H*0.62;
-
-  // 环境光
-  const lg = ctx.createRadialGradient(W*0.5, H*0.15, 40, W*0.5, H*0.15, W*0.72);
-  lg.addColorStop(0,"rgba(90,180,255,.10)");
-  lg.addColorStop(1,"rgba(90,180,255,0)");
-  ctx.fillStyle=lg; ctx.fillRect(0,0,W,hz);
-
-  // 地面透视网格
-  ctx.strokeStyle="rgba(90,170,225,.10)"; ctx.lineWidth=1;
-  for(let i=-8;i<=8;i++){
-    const x = W*0.5 + i*(W*0.11);
-    ctx.beginPath(); ctx.moveTo(W*0.5 + i*(W*0.02), hz); ctx.lineTo(x, H); ctx.stroke();
-  }
-  const rows = 9;
-  for(let i=1;i<=rows;i++){
-    const t = i/rows;
-    const y = hz + (H-hz)*Math.pow(t,1.9);
-    ctx.strokeStyle = "rgba(90,170,225,"+(0.075*(1-t*0.55)).toFixed(3)+")";
-    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
-  }
-
-  // 地平线光带
-  ctx.fillStyle="rgba(90,200,255,.14)"; ctx.fillRect(0,hz-1,W,1.6);
-
-  // 远处靶板轮廓
-  ctx.fillStyle="rgba(18,30,44,.85)";
-  for(let i=0;i<5;i++){
-    const bw=68, bh=90, gap=W/5.6, x=W*0.5+(i-2)*gap-bw/2, y=hz-bh-6;
-    roundRect(x,y,bw,bh,6); ctx.fill();
-    ctx.strokeStyle="rgba(90,180,235,.14)"; ctx.lineWidth=1; ctx.stroke();
-  }
-
-  // 暗角
-  const vg = ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*0.34,W/2,H/2,Math.max(W,H)*0.78);
-  vg.addColorStop(0,"rgba(0,0,0,0)"); vg.addColorStop(1,"rgba(0,0,0,.55)");
-  ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+  if(city.key==="paris") drawParis(hz);
+  else if(city.key==="tokyo") drawTokyo(hz);
+  else drawLA(hz);
+  drawGround(hz);
+  drawVignette();
 }
 
+function drawLA(hz){
+  const sky = ctx.createLinearGradient(0,0,0,hz);
+  sky.addColorStop(0,"#1d1136");
+  sky.addColorStop(0.30,"#5a2a52");
+  sky.addColorStop(0.56,"#b8543f");
+  sky.addColorStop(0.78,"#e8894d");
+  sky.addColorStop(1,"#f7c983");
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,hz);
+
+  // 太阳与光晕
+  const sx = W*0.72, sy = hz*0.80;
+  const sg = ctx.createRadialGradient(sx,sy,4,sx,sy,W*0.34);
+  sg.addColorStop(0,"rgba(255,238,185,.95)");
+  sg.addColorStop(0.16,"rgba(255,192,112,.52)");
+  sg.addColorStop(1,"rgba(255,140,80,0)");
+  ctx.fillStyle=sg; ctx.fillRect(0,0,W,hz);
+  ctx.fillStyle="rgba(255,244,205,.92)";
+  ctx.beginPath(); ctx.arc(sx,sy,25,0,Math.PI*2); ctx.fill();
+
+  // 远山
+  ctx.fillStyle="#7a3f52";
+  ctx.beginPath(); ctx.moveTo(0,hz);
+  for(let x=0;x<=W;x+=32){
+    ctx.lineTo(x, hz-40-Math.sin(x*0.0038)*24-Math.sin(x*0.0102)*11);
+  }
+  ctx.lineTo(W,hz); ctx.closePath(); ctx.fill();
+
+  // 城市剪影 + 窗光
+  let x=0, seed=7;
+  while(x<W){
+    seed=(seed*1103515245+12345)&0x7fffffff;
+    const bw=26+(seed%46), bh=32+((seed>>6)%92);
+    ctx.fillStyle="#3a2038";
+    ctx.fillRect(x, hz-bh, bw, bh);
+    for(let wy=hz-bh+8; wy<hz-9; wy+=11){
+      for(let wx=x+5; wx<x+bw-6; wx+=10){
+        seed=(seed*1103515245+12345)&0x7fffffff;
+        if((seed>>4)%3===0){
+          ctx.fillStyle="rgba(255,206,132,.5)";
+          ctx.fillRect(wx,wy,3,4);
+        }
+      }
+    }
+    x += bw + 4;
+  }
+
+  // 棕榈树
+  drawPalm(W*0.09, hz+8, 1.18, "#25142a");
+  drawPalm(W*0.185, hz+12, 0.86, "#2b1830");
+  drawPalm(W*0.875, hz+10, 1.02, "#25142a");
+  drawPalm(W*0.955, hz+6, 1.32, "#1d1022");
+
+  // 地平线暖雾
+  const hg = ctx.createLinearGradient(0,hz-34,0,hz);
+  hg.addColorStop(0,"rgba(255,172,112,0)");
+  hg.addColorStop(1,"rgba(255,162,100,.30)");
+  ctx.fillStyle=hg; ctx.fillRect(0,hz-34,W,34);
+}
+
+function drawPalm(x, baseY, s, color){
+  ctx.save();
+  ctx.translate(x, baseY);
+  ctx.scale(s,s);
+  ctx.strokeStyle=color; ctx.lineCap="round";
+  ctx.lineWidth=7;
+  ctx.beginPath();
+  ctx.moveTo(0,0);
+  ctx.quadraticCurveTo(-9,-68,-4,-126);
+  ctx.stroke();
+  ctx.lineWidth=4;
+  const topX=-4, topY=-126;
+  const angs=[-2.72,-2.24,-1.78,-1.36,-0.92,-0.48,-0.12];
+  for(const a of angs){
+    ctx.beginPath();
+    ctx.moveTo(topX,topY);
+    ctx.quadraticCurveTo(
+      topX+Math.cos(a)*34, topY+Math.sin(a)*19-8,
+      topX+Math.cos(a)*64, topY+Math.sin(a)*42+9
+    );
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawParis(hz){
+  const sky=ctx.createLinearGradient(0,0,0,hz);
+  sky.addColorStop(0,"#0c1230");
+  sky.addColorStop(0.40,"#27315e");
+  sky.addColorStop(0.70,"#6b5a83");
+  sky.addColorStop(1,"#c98d6d");
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,hz);
+
+  // 月
+  ctx.fillStyle="rgba(242,242,222,.88)";
+  ctx.beginPath(); ctx.arc(W*0.16,hz*0.28,16,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle="rgba(242,242,222,.10)";
+  ctx.beginPath(); ctx.arc(W*0.16,hz*0.28,42,0,Math.PI*2); ctx.fill();
+
+  // 埃菲尔铁塔
+  const ex=W*0.64, eb=hz;
+  ctx.strokeStyle="#191e39";
+  ctx.lineWidth=3;
+  ctx.beginPath();
+  ctx.moveTo(ex-74, eb);
+  ctx.quadraticCurveTo(ex-23, eb-122, ex-11, eb-192);
+  ctx.lineTo(ex-4, eb-252);
+  ctx.lineTo(ex+4, eb-252);
+  ctx.lineTo(ex+11, eb-192);
+  ctx.quadraticCurveTo(ex+23, eb-122, ex+74, eb);
+  ctx.stroke();
+  ctx.lineWidth=5;
+  ctx.beginPath();
+  ctx.moveTo(ex-41,eb-80); ctx.lineTo(ex+41,eb-80);
+  ctx.moveTo(ex-21,eb-162); ctx.lineTo(ex+21,eb-162);
+  ctx.moveTo(ex-9,eb-230); ctx.lineTo(ex+9,eb-230);
+  ctx.stroke();
+  ctx.lineWidth=1.3; ctx.strokeStyle="rgba(25,30,57,.75)";
+  for(let i=0;i<7;i++){
+    const y1=eb-22-i*30, y2=y1-30;
+    const w1=62-i*8, w2=62-(i+1)*8;
+    ctx.beginPath();
+    ctx.moveTo(ex-w1,y1); ctx.lineTo(ex+w2,y2);
+    ctx.moveTo(ex+w1,y1); ctx.lineTo(ex-w2,y2);
+    ctx.stroke();
+  }
+  ctx.fillStyle="rgba(255,226,152,.92)";
+  ctx.beginPath(); ctx.arc(ex,eb-257,3.2,0,Math.PI*2); ctx.fill();
+
+  // 奥斯曼建筑
+  let x=0, seed=13;
+  while(x<W){
+    seed=(seed*1103515245+12345)&0x7fffffff;
+    const bw=54+(seed%40), bh=48+((seed>>7)%56);
+    ctx.fillStyle="#161b32";
+    ctx.fillRect(x, hz-bh, bw, bh);
+    ctx.fillStyle="#1f2540";
+    ctx.beginPath();
+    ctx.moveTo(x, hz-bh);
+    ctx.lineTo(x+bw/2, hz-bh-19);
+    ctx.lineTo(x+bw, hz-bh);
+    ctx.closePath(); ctx.fill();
+    for(let wy=hz-bh+11; wy<hz-11; wy+=15){
+      for(let wx=x+8; wx<x+bw-11; wx+=14){
+        seed=(seed*1103515245+12345)&0x7fffffff;
+        if((seed>>5)%3!==0){
+          ctx.fillStyle="rgba(255,208,140,.42)";
+          ctx.fillRect(wx,wy,5,7);
+        }
+      }
+    }
+    x+=bw+3;
+  }
+}
+
+function drawTokyo(hz){
+  const sky=ctx.createLinearGradient(0,0,0,hz);
+  sky.addColorStop(0,"#04050e");
+  sky.addColorStop(0.45,"#121a3a");
+  sky.addColorStop(0.78,"#3d1b48");
+  sky.addColorStop(1,"#7d2454");
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,hz);
+
+  // 富士山
+  const fx=W*0.28, fb=hz;
+  ctx.fillStyle="#141a32";
+  ctx.beginPath();
+  ctx.moveTo(fx-150, fb);
+  ctx.quadraticCurveTo(fx-42, fb-98, fx-17, fb-142);
+  ctx.lineTo(fx+17, fb-142);
+  ctx.quadraticCurveTo(fx+42, fb-98, fx+150, fb);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle="rgba(224,234,255,.86)";
+  ctx.beginPath();
+  ctx.moveTo(fx-17, fb-142);
+  ctx.lineTo(fx+17, fb-142);
+  ctx.lineTo(fx+23, fb-127);
+  ctx.lineTo(fx+7, fb-134);
+  ctx.lineTo(fx-4, fb-125);
+  ctx.lineTo(fx-23, fb-131);
+  ctx.closePath(); ctx.fill();
+
+  // 楼群 + 霓虹
+  let x=0, seed=29;
+  const neon=["#ff4fa3","#4fe0ff","#ffd24f","#a56bff","#4fff9c"];
+  while(x<W){
+    seed=(seed*1103515245+12345)&0x7fffffff;
+    const bw=28+(seed%38), bh=58+((seed>>7)%112);
+    ctx.fillStyle="#0b0f1e";
+    ctx.fillRect(x, hz-bh, bw, bh);
+    for(let wy=hz-bh+8; wy<hz-9; wy+=12){
+      for(let wx=x+4; wx<x+bw-7; wx+=9){
+        seed=(seed*1103515245+12345)&0x7fffffff;
+        if((seed>>3)%4===0){
+          ctx.fillStyle="rgba(150,200,255,.32)";
+          ctx.fillRect(wx,wy,3,5);
+        }
+      }
+    }
+    if((seed>>9)%3===0){
+      const nh=22+((seed>>11)%42);
+      const nc=neon[(seed>>13)%neon.length];
+      ctx.shadowColor=nc; ctx.shadowBlur=13;
+      ctx.fillStyle=nc; ctx.globalAlpha=.9;
+      ctx.fillRect(x+bw-10, hz-bh+12, 4, nh);
+      ctx.globalAlpha=1; ctx.shadowBlur=0;
+    }
+    x+=bw+2;
+  }
+
+  // 东京塔
+  const tx=W*0.83, tb=hz;
+  ctx.strokeStyle="#ff5a7a"; ctx.lineWidth=2.4;
+  ctx.beginPath();
+  ctx.moveTo(tx-34, tb);
+  ctx.lineTo(tx-5, tb-152);
+  ctx.lineTo(tx+5, tb-152);
+  ctx.lineTo(tx+34, tb);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(tx-20,tb-72); ctx.lineTo(tx+20,tb-72);
+  ctx.moveTo(tx-11,tb-112); ctx.lineTo(tx+11,tb-112);
+  ctx.stroke();
+  ctx.fillStyle="#ff8aa0";
+  ctx.beginPath(); ctx.arc(tx,tb-157,3,0,Math.PI*2); ctx.fill();
+}
+
+function drawGround(hz){
+  const gg=ctx.createLinearGradient(0,hz,0,H);
+  gg.addColorStop(0,"#131a25");
+  gg.addColorStop(1,"#070b11");
+  ctx.fillStyle=gg; ctx.fillRect(0,hz,W,H-hz);
+
+  ctx.strokeStyle="rgba(120,180,230,.10)"; ctx.lineWidth=1;
+  for(let i=-9;i<=9;i++){
+    const x=W*0.5+i*(W*0.105);
+    ctx.beginPath();
+    ctx.moveTo(W*0.5+i*(W*0.018), hz);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+  const rows=10;
+  for(let i=1;i<=rows;i++){
+    const t=i/rows;
+    const y=hz+(H-hz)*Math.pow(t,1.85);
+    ctx.strokeStyle="rgba(120,180,230,"+(0.085*(1-t*0.5)).toFixed(3)+")";
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+  ctx.fillStyle="rgba(150,205,255,.16)"; ctx.fillRect(0,hz-1,W,1.5);
+}
+
+function drawVignette(){
+  const vg=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*0.32,W/2,H/2,Math.max(W,H)*0.80);
+  vg.addColorStop(0,"rgba(0,0,0,0)");
+  vg.addColorStop(1,"rgba(0,0,0,.54)");
+  ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+}
 // ==================== 准星 ====================
 function drawCrosshair(){
   const x = pointer.x, y = pointer.y;
@@ -746,7 +1042,7 @@ function drawGun(){
 
 // ==================== 绘制主循环 ====================
 function draw(dt){
-  drawRange();
+  drawBackground();
 
   if(state===S.PLAY || state===S.PAUSED){
     for(const t of targets) drawTarget(t);
@@ -758,13 +1054,37 @@ function draw(dt){
     ctx.fillStyle = "hsla("+p.hue+","+p.sat+"%,"+p.lig+"%,"+(t*0.95)+")";
     ctx.beginPath(); ctx.arc(p.x,p.y,p.size*t,0,Math.PI*2); ctx.fill();
   }
-  // 弹道
+  // 曳光弹
   for(const tc of tracers){
     const a = tc.life/tc.max;
-    ctx.strokeStyle = "rgba(255,235,170,"+(a*0.55)+")";
-    ctx.lineWidth = 1.4;
+    const tg = ctx.createLinearGradient(tc.x1,tc.y1,tc.x2,tc.y2);
+    tg.addColorStop(0, "rgba(255,214,130,0)");
+    tg.addColorStop(0.35, "rgba(255,226,150,"+(a*0.42)+")");
+    tg.addColorStop(1, "rgba(255,252,225,"+(a*0.96)+")");
+    ctx.strokeStyle = tg;
+    ctx.lineWidth = 1.1 + a*2.4;
+    ctx.lineCap = "round";
     ctx.beginPath(); ctx.moveTo(tc.x1,tc.y1); ctx.lineTo(tc.x2,tc.y2); ctx.stroke();
+    // 弹头亮点
+    ctx.fillStyle = "rgba(255,248,210,"+(a*0.95)+")";
+    ctx.beginPath(); ctx.arc(tc.x2, tc.y2, 2.4*a + 0.7, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "rgba(255,220,150,"+(a*0.30)+")";
+    ctx.beginPath(); ctx.arc(tc.x2, tc.y2, 7*a + 2, 0, Math.PI*2); ctx.fill();
   }
+  // 弹壳
+  for(const sh of shells){
+    const a = Math.min(1, sh.life/sh.max*1.6);
+    ctx.save();
+    ctx.translate(sh.x, sh.y);
+    ctx.rotate(sh.rot);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = "rgba(226,192,118,.95)";
+    ctx.fillRect(-2.6,-1.3,5.2,2.6);
+    ctx.fillStyle = "rgba(255,236,180,.9)";
+    ctx.fillRect(-2.6,-1.3,1.6,2.6);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
   // 飘字
   for(const t of texts){
     const a = t.life/t.max;
@@ -883,6 +1203,14 @@ function update(dt){
     tracers[i].life-=dt;
     if(tracers[i].life<=0) tracers.splice(i,1);
   }
+  // 弹壳
+  for(let i=shells.length-1;i>=0;i--){
+    const sh = shells[i];
+    sh.life -= dt;
+    sh.x += sh.vx*dt; sh.y += sh.vy*dt;
+    sh.vy += 720*dt; sh.rot += sh.vr*dt;
+    if(sh.life<=0 || sh.y > H+50) shells.splice(i,1);
+  }
 
   updateHUD();
 }
@@ -916,7 +1244,7 @@ function startGame(){
   shots=0;hits=0;kills=0;headshots=0;
   elapsed=0; spawnTimer=0;
   targets=[]; for(let i=0;i<diff.max;i++) targets.push(makeTarget());
-  parts=[]; texts=[]; tracers=[];
+  parts=[]; texts=[]; tracers=[]; shells=[];
   ammo=weapon.mag; reloading=false; reloadT=0; reloadTotal=0;
   fireCd=0; recoil=0; muzzle=0; mouseDown=false; firedOnce=false;
   state=S.PLAY; paused=false;
@@ -1019,6 +1347,23 @@ function buildDiffCards(){
 buildCharCards();
 buildWeaponCards();
 buildDiffCards();
+
+function buildCityCards(){
+  const row = $("cityRow");
+  Object.keys(CITIES).forEach(k=>{
+    const c = CITIES[k];
+    const el = document.createElement("div");
+    el.className = "dcard" + (k===city.key?" on":"");
+    el.innerHTML = '<div class="dn">'+c.name+'</div><div class="dd">'+c.desc+'</div>';
+    el.addEventListener("click", ()=>{
+      city = c;
+      row.querySelectorAll(".dcard").forEach(x=>x.classList.remove("on"));
+      el.classList.add("on");
+    });
+    row.appendChild(el);
+  });
+}
+buildCityCards();
 
 // ==================== 事件 ====================
 canvas.addEventListener("mousemove", e=>{ pointer.x=e.clientX; pointer.y=e.clientY; });
