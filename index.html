@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vision Catcher · 视觉接球</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e17; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
+  #game { display: block; width: 100%; height: 100%; }
+
+  .hud {
+    position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 26px; align-items: center;
+    padding: 10px 26px; border-radius: 999px;
+    background: rgba(12, 18, 30, .72);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(90, 200, 255, .25);
+    color: #e8f4ff; font-size: 15px; letter-spacing: .5px;
+    z-index: 10; user-select: none;
+  }
+  .hud b { color: #5ad1ff; font-size: 21px; font-weight: 700; }
+  .hud .sep { width: 1px; height: 18px; background: rgba(120, 180, 220, .3); }
+  .hud .mode { font-size: 12px; color: #7f9bb5; }
+
+  #overlay {
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 45%, rgba(18,30,52,.94), rgba(6,9,16,.98));
+    color: #e8f4ff; text-align: center; padding: 30px;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h1 {
+    font-size: clamp(30px, 5vw, 52px); font-weight: 800; letter-spacing: 2px;
+    background: linear-gradient(92deg, #5ad1ff, #8b7cff 55%, #ff7ac8);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    margin-bottom: 6px;
+  }
+  #overlay .sub { font-size: 14px; color: #7f9bb5; letter-spacing: 3px; margin-bottom: 30px; }
+  #overlay .rule {
+    max-width: 480px; font-size: 14.5px; line-height: 2; color: #a8c0d6;
+    margin-bottom: 34px;
+  }
+  #overlay .rule em { color: #5ad1ff; font-style: normal; font-weight: 700; }
+  .btn {
+    padding: 14px 48px; font-size: 17px; font-weight: 700; letter-spacing: 2px;
+    color: #04121c; border: none; border-radius: 999px; cursor: pointer;
+    background: linear-gradient(92deg, #5ad1ff, #7ee0c0);
+    box-shadow: 0 8px 30px rgba(90, 209, 255, .35);
+    transition: transform .15s, box-shadow .15s;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 38px rgba(90, 209, 255, .5); }
+  .btn.ghost {
+    background: transparent; color: #8fb8d8; border: 1px solid rgba(120, 180, 220, .35);
+    box-shadow: none; font-size: 14px; padding: 10px 26px; margin-top: 16px;
+  }
+  .btn.ghost:hover { border-color: #5ad1ff; color: #5ad1ff; }
+
+  #result { font-size: 15px; color: #8fb8d8; margin-bottom: 26px; line-height: 2; }
+  #result .big { font-size: 46px; font-weight: 800; color: #5ad1ff; display: block; line-height: 1.2; }
+
+  #err {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 12.5px; color: #ff9c9c; background: rgba(60,12,18,.75);
+    padding: 8px 18px; border-radius: 8px; z-index: 30; display: none;
+  }
+  .credit {
+    position: fixed; bottom: 14px; right: 18px; z-index: 10;
+    font-size: 11.5px; color: rgba(130, 165, 195, .55); letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="hud">
+  <span>得分 <b id="score">0</b></span>
+  <span class="sep"></span>
+  <span>剩余 <b id="time">60</b>s</span>
+  <span class="sep"></span>
+  <span>连击 <b id="combo">0</b></span>
+  <span class="sep"></span>
+  <span class="mode" id="modeLabel">摄像头检测中</span>
+</div>
+
+<div id="overlay">
+  <h1>VISION CATCHER</h1>
+  <div class="sub">视 觉 接 球</div>
+  <div class="rule" id="ruleText">
+    摄像头会实时检测你身体的运动区域。<br>
+    <em>用手或身体去"罩住"飘动的光球</em>即可得分。<br>
+    60 秒内拿到尽可能高的分数，连续命中会有连击加成。
+  </div>
+  <div id="result"></div>
+  <button class="btn" id="startBtn">开始游戏</button>
+  <button class="btn ghost" id="mouseBtn">没有摄像头？用鼠标玩</button>
+</div>
+
+<div id="err"></div>
+<div class="credit">独立开发 · 原生 Canvas + 实时运动检测</div>
+
+<video id="cam" autoplay playsinline muted style="display:none"></video>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- 基础 ----------
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const video = document.getElementById("cam");
+  const scoreEl = document.getElementById("score");
+  const timeEl = document.getElementById("time");
+  const comboEl = document.getElementById("combo");
+  const modeLabel = document.getElementById("modeLabel");
+  const overlay = document.getElementById("overlay");
+  const resultEl = document.getElementById("result");
+  const startBtn = document.getElementById("startBtn");
+  const mouseBtn = document.getElementById("mouseBtn");
+  const errEl = document.getElementById("err");
+  const ruleText = document.getElementById("ruleText");
+
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = canvas.clientWidth;
+    H = canvas.clientHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ---------- 运动检测用的小画布 ----------
+  const DW = 80, DH = 60;                 // 检测分辨率（降采样，够快够稳）
+  const detCanvas = document.createElement("canvas");
+  detCanvas.width = DW; detCanvas.height = DH;
+  const detCtx = detCanvas.getContext("2d", { willReadFrequently: true });
+  let prevGray = null;
+
+  // ---------- 状态 ----------
+  const STATE = { MENU: 0, PLAY: 1, OVER: 2 };
+  let state = STATE.MENU;
+  let useCamera = false;
+  let cameraReady = false;
+
+  let score = 0, combo = 0, maxCombo = 0, timeLeft = 60, ballsEaten = 0;
+  let lastTs = 0, elapsed = 0;
+
+  // 玩家（检测到的运动区域）
+  const player = { x: 0, y: 0, r: 0, active: false, tx: 0, ty: 0 };
+
+  // 光球
+  let balls = [];
+  const BALL_COUNT = 5;
+
+  // 鼠标兜底
+  const mouse = { x: 0, y: 0, active: false };
+  canvas.addEventListener("mousemove", (e) => {
+    mouse.x = e.clientX; mouse.y = e.clientY; mouse.active = true;
+  });
+  canvas.addEventListener("touchmove", (e) => {
+    const t = e.touches[0];
+    if (t) { mouse.x = t.clientX; mouse.y = t.clientY; mouse.active = true; }
+  }, { passive: true });
+
+  // ---------- 工具 ----------
+  const rand = (a, b) => a + Math.random() * (b - a);
+
+  function spawnBall() {
+    const r = rand(26, 42);
+    const hue = rand(180, 320);
+    let x, y, tries = 0;
+    do {
+      x = rand(r + 40, W - r - 40);
+      y = rand(r + 90, H - r - 50);
+      tries++;
+    } while (tries < 20 && Math.hypot(x - player.x, y - player.y) < 200);
+    balls.push({
+      x, y, r, hue,
+      vx: rand(-38, 38), vy: rand(-30, 30),
+      phase: rand(0, Math.PI * 2),
+      born: elapsed
+    });
+  }
+
+  function resetGame() {
+    score = 0; combo = 0; maxCombo = 0; timeLeft = 60; ballsEaten = 0;
+    elapsed = 0; balls = [];
+    player.x = W / 2; player.y = H / 2; player.r = 90; player.active = false;
+    for (let i = 0; i < BALL_COUNT; i++) spawnBall();
+    updateHUD();
+  }
+
+  function updateHUD() {
+    scoreEl.textContent = score;
+    timeEl.textContent = Math.ceil(timeLeft);
+    comboEl.textContent = combo;
+  }
+
+  function showErr(msg) {
+    errEl.textContent = msg;
+    errEl.style.display = "block";
+    setTimeout(() => { errEl.style.display = "none"; }, 4200);
+  }
+
+  // ---------- 摄像头 ----------
+  async function initCamera() {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("当前浏览器不支持摄像头 API");
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+      cameraReady = true;
+      useCamera = true;
+      modeLabel.textContent = "摄像头检测中";
+      return true;
+    } catch (e) {
+      cameraReady = false;
+      useCamera = false;
+      modeLabel.textContent = "鼠标模式";
+      showErr("摄像头不可用（" + (e.message || "权限被拒绝") + "），已切换鼠标模式");
+      return false;
+    }
+  }
+
+  // ---------- 每帧：从摄像头抽取灰度并做帧差 ----------
+  function detectMotion() {
+    if (!cameraReady || video.readyState < 2) return;
+
+    detCtx.save();
+    detCtx.translate(DW, 0);
+    detCtx.scale(-1, 1);                      // 镜像，动作方向与人一致
+    detCtx.drawImage(video, 0, 0, DW, DH);
+    detCtx.restore();
+
+    const img = detCtx.getImageData(0, 0, DW, DH).data;
+    const gray = new Uint8Array(DW * DH);
+    for (let i = 0, p = 0; i < img.length; i += 4, p++) {
+      gray[p] = (img[i] * 0.299 + img[i + 1] * 0.587 + img[i + 2] * 0.114) | 0;
+    }
+
+    if (!prevGray) { prevGray = gray; return; }
+
+    let sumX = 0, sumY = 0, count = 0, minX = DW, maxX = 0, minY = DH, maxY = 0;
+    const TH = 26;                            // 亮度差阈值
+    for (let y = 0; y < DH; y++) {
+      for (let x = 0; x < DW; x++) {
+        const idx = y * DW + x;
+        if (Math.abs(gray[idx] - prevGray[idx]) > TH) {
+          sumX += x; sumY += y; count++;
+          if (x < minX) minX = x; if (x > maxX) maxX = x;
+          if (y < minY) minY = y; if (y > maxY) maxY = y;
+        }
+      }
+    }
+    prevGray = gray;
+
+    motionMask.count = count;
+
+    if (count > 55) {                          // 运动面积足够大才算有效
+      const cx = sumX / count, cy = sumY / count;
+      player.tx = (cx / DW) * W;
+      player.ty = (cy / DH) * H;
+      // 半径随运动范围变化
+      const spread = Math.max(maxX - minX, maxY - minY);
+      player.r = Math.min(160, Math.max(60, (spread / DW) * W * 0.55));
+      player.active = true;
+    } else {
+      player.active = false;
+      player.r *= 0.9;
+    }
+  }
+
+  const motionMask = { count: 0 };
+
+  // ---------- 更新 ----------
+  function update(dt) {
+    if (state !== STATE.PLAY) return;
+
+    elapsed += dt;
+    timeLeft -= dt;
+    if (timeLeft <= 0) { timeLeft = 0; endGame(); return; }
+
+    // 玩家位置平滑
+    if (useCamera) {
+      detectMotion();
+      if (player.active) {
+        player.x += (player.tx - player.x) * Math.min(1, dt * 12);
+        player.y += (player.ty - player.y) * Math.min(1, dt * 12);
+      }
+    } else if (mouse.active) {
+      player.x += (mouse.x - player.x) * Math.min(1, dt * 16);
+      player.y += (mouse.y - player.y) * Math.min(1, dt * 16);
+      player.active = true;
+      player.r = 78;
+    }
+
+    // 光球飘动 + 碰撞
+    for (let i = balls.length - 1; i >= 0; i--) {
+      const b = balls[i];
+      b.phase += dt * 1.6;
+      b.x += b.vx * dt + Math.sin(b.phase) * 0.6;
+      b.y += b.vy * dt + Math.cos(b.phase * 0.8) * 0.6;
+
+      // 边界反弹
+      if (b.x < b.r + 20 || b.x > W - b.r - 20) b.vx *= -1;
+      if (b.y < b.r + 80 || b.y > H - b.r - 20) b.vy *= -1;
+      b.x = Math.max(b.r + 20, Math.min(W - b.r - 20, b.x));
+      b.y = Math.max(b.r + 80, Math.min(H - b.r - 20, b.y));
+
+      // 命中判定
+      const d = Math.hypot(b.x - player.x, b.y - player.y);
+      if (player.active && d < b.r + player.r * 0.62) {
+        balls.splice(i, 1);
+        combo++;
+        if (combo > maxCombo) maxCombo = combo;
+        const gain = 10 * Math.min(5, 1 + Math.floor((combo - 1) / 3));
+        score += gain;
+        ballsEaten++;
+        spawnBall();
+        updateHUD();
+      }
+    }
+
+    updateHUD();
+  }
+
+  // ---------- 绘制 ----------
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    // 背景：摄像头画面 或 深色渐变
+    if (cameraReady && video.readyState >= 2) {
+      ctx.save();
+      ctx.globalAlpha = 0.42;
+      ctx.translate(W, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, W, H);
+      ctx.restore();
+
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, "rgba(6,10,18,.62)");
+      g.addColorStop(0.55, "rgba(6,10,18,.45)");
+      g.addColorStop(1, "rgba(6,10,18,.72)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    } else {
+      const g = ctx.createRadialGradient(W / 2, H * 0.45, 60, W / 2, H * 0.45, Math.max(W, H) * 0.8);
+      g.addColorStop(0, "#122036");
+      g.addColorStop(1, "#06090f");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    if (state === STATE.MENU) return;
+
+    // 光球
+    for (const b of balls) {
+      const r = b.r;
+      const grd = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r * 1.9);
+      grd.addColorStop(0, "hsla(" + b.hue + ",100%,72%,.95)");
+      grd.addColorStop(0.45, "hsla(" + b.hue + ",95%,58%,.5)");
+      grd.addColorStop(1, "hsla(" + b.hue + ",90%,50%,0)");
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r * 1.9, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "hsla(" + b.hue + ",100%,88%,.95)";
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 玩家（运动区域）
+    if (player.active) {
+      ctx.save();
+      const pr = player.r;
+      const pg = ctx.createRadialGradient(player.x, player.y, pr * 0.2, player.x, player.y, pr);
+      pg.addColorStop(0, "rgba(90,209,255,.30)");
+      pg.addColorStop(0.7, "rgba(90,209,255,.13)");
+      pg.addColorStop(1, "rgba(90,209,255,0)");
+      ctx.fillStyle = pg;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, pr, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(140,230,255,.72)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, pr * 0.72, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 倒计时环（右上角）
+    const cx = W - 58, cy = 58, R = 26;
+    ctx.save();
+    ctx.strokeStyle = "rgba(120,180,220,.18)";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = timeLeft < 10 ? "#ff7a7a" : "#5ad1ff";
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (timeLeft / 60));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ---------- 主循环 ----------
+  function loop(ts) {
+    if (!lastTs) lastTs = ts;
+    let dt = (ts - lastTs) / 1000;
+    lastTs = ts;
+    if (dt > 0.05) dt = 0.05;                 // 防跳帧
+
+    if (state === STATE.PLAY) update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ---------- 流程 ----------
+  function startGame(withCamera) {
+    resetGame();
+    state = STATE.PLAY;
+    overlay.classList.add("hidden");
+    if (withCamera) {
+      initCamera();
+    } else {
+      useCamera = false;
+      modeLabel.textContent = "鼠标模式";
+    }
+  }
+
+  function endGame() {
+    state = STATE.OVER;
+    resultEl.innerHTML =
+      '<span class="big">' + score + ' 分</span>' +
+      "接住光球 " + ballsEaten + " 个 · 最高连击 " + maxCombo +
+      (useCamera ? "<br>本轮为摄像头体感模式" : "<br>本轮为鼠标模式");
+    ruleText.style.display = "none";
+    startBtn.textContent = "再来一局";
+    mouseBtn.style.display = "none";
+    overlay.classList.remove("hidden");
+  }
+
+  startBtn.addEventListener("click", () => {
+    if (state === STATE.MENU) startGame(true);
+    else startGame(true);
+  });
+  mouseBtn.addEventListener("click", () => startGame(false));
+
+  // 预检：页面加载后尝试拿权限提示（不自动开摄像头，避免惊吓）
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    modeLabel.textContent = "鼠标模式";
+    showErr("当前环境不支持摄像头，将使用鼠标模式");
+    mouseBtn.textContent = "直接用鼠标玩";
+  }
+})();
+</script>
+</body>
+</html>
